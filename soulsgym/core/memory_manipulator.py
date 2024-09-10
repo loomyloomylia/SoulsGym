@@ -27,6 +27,8 @@ from __future__ import annotations
 import platform
 from typing import NotRequired, TypedDict
 
+import pymem.memory
+
 if platform.system() == "Windows":  # Windows imports, ignore for unix to make imports work
     import win32api
     import win32con
@@ -75,11 +77,20 @@ class MemoryManipulator(metaclass=Singleton):
             self.pymem = Pymem()
             self.pymem.open_process_from_id(self.pid)
             self.address_cache: dict[str, int] = {}
+
+            # The Elden Ring .exe has differing memory protections than the Dark Souls 3 .exe, so a runtime
+            # patch-over of the Pymem scan_pattern_page function is needed to find all the bases.
+            # The Pymem docs say this function may be renamed in future versions.
+            if self.process_name == "eldenring.exe":
+                pym.pattern.scan_pattern_page = eldenring_scan_pattern_page
+
             # Find the base addresses. Use static addresses where nothing else available. Else use
             # pymems AOB scan functions
             self.process_module = pym.process.module_from_name(
                 self.pymem.process_handle, self.process_name
             )
+
+
             self.bases = self._load_bases(process_name)
 
     def resolve_record(self, record: AddressRecord) -> int:
@@ -313,6 +324,7 @@ class MemoryManipulator(metaclass=Singleton):
             bases = {}
         else:
             bases = {name: addr + self.base_address for name, addr in address_bases[game].items()}
+
         for base_key, base in address_base_patterns[game].items():
             pattern = bytes(base["pattern"], "ASCII")
             addr = pym.pattern.pattern_scan_module(
@@ -337,3 +349,52 @@ class MemoryManipulator(metaclass=Singleton):
             # TODO: If possible, replace with own disassembler
             bases[base_key] = addr + self.pymem.read_long(addr + 3) + 7
         return bases
+
+
+
+
+try:
+    # faster than builtin re
+    import regex as re
+except ImportError:
+    import re
+
+def eldenring_scan_pattern_page(handle, address, pattern, *, return_multiple=False):
+    """
+
+    The Elden Ring exe module has pages of memory that have the PAGE_EXECUTE_WRITECOPY permissions, which are
+    blacklisted from the pymem.pattern.scan_pattern_page function. In order to read the address bases contained within
+    these sections of memory, this slightly modified version is used instead and patched over the one in the Pymem module.
+
+    For details on usage, see /pymem/pattern.py or the Pymem documentation.
+
+    """
+    mbi = pymem.memory.virtual_query(handle, address)
+    next_region = mbi.BaseAddress + mbi.RegionSize
+    allowed_protections = [
+        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READ,
+        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE,
+        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_READWRITE,
+        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_READONLY,
+        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_WRITECOPY, # This line is not present in the original function.
+    ]
+    if mbi.state != pymem.ressources.structure.MEMORY_STATE.MEM_COMMIT or mbi.protect not in allowed_protections:
+        return next_region, None
+
+    page_bytes = pymem.memory.read_bytes(handle, address, mbi.RegionSize)
+
+    if not return_multiple:
+        found = None
+        match = re.search(pattern, page_bytes, re.DOTALL)
+
+        if match:
+            found = address + match.span()[0]
+
+    else:
+        found = []
+
+        for match in re.finditer(pattern, page_bytes, re.DOTALL):
+            found_address = address + match.span()[0]
+            found.append(found_address)
+
+    return next_region, found

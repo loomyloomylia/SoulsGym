@@ -100,7 +100,7 @@ addresses:
     type: int
   LastGrace:
     base: GameMan
-    offsets: [0xB30]
+    offsets: [0xB60]
     type: int
   Time:
     base: GameDataMan

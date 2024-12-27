@@ -395,7 +395,7 @@ class DarkSoulsIII(Game):
     # a property factory for each boss attribute, e.g. boss_hp. The factory takes the boss ID and
     # returns a property object for this particular boss. This allows us to define properties for
     # new bosses in a single line and reduces code duplication. Each factory assumes that the
-    # addresses for bosses are stored with the boss ID as a suffix, e.g. "IudexHP" for Iudex's HP.
+    # addresses for bosses are stored with the boss ID as a prefix, e.g. "IudexHP" for Iudex's HP.
 
     def _boss_hp(boss_id: str) -> property:
         """Create a property for the boss HP given the boss ID.

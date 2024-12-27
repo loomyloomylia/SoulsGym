@@ -1,4 +1,5 @@
 """This module contains the game interface for Elden Ring."""
+from __future__ import annotations
 
 import logging
 import struct
@@ -10,6 +11,7 @@ from pymem.exception import MemoryReadError
 
 from soulsgym.core.utils import wrap_to_pi
 from soulsgym.games import Game
+
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +246,36 @@ class EldenRing(Game):
         offsets = (0x2C, 0x00, 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C)
         for stat, offset in zip(stats, offsets):
             self.mem.write_int(address + offset, stat)
+
+    # We define properties for each boss. Since most code is shared between the bosses, we create
+    # a property factory for each boss attribute, e.g. boss_hp. The factory takes the boss ID and
+    # returns a property object for this particular boss. This allows us to define properties for
+    # new bosses in a single line and reduces code duplication. Each factory assumes that the
+    # addresses for bosses are stored with the boss ID as a prefix, e.g. "MargitHP" for Margit's HP.
+
+    def _boss_hp(boss_id: str) -> property:
+        """Create a property for the boss HP given the boss ID.
+
+        Args:
+            boss_id: The boss ID.
+
+        Returns:
+            A property object that can be used to get and set the boss HP.
+        """
+
+        @property
+        def boss_hp(self: EldenRing) -> int:
+            return self.mem.read_record(self.data.addresses[boss_id + "HP"])
+
+        @boss_hp.setter
+        def boss_hp(self: EldenRing, hp: int):
+            assert 0 <= hp, "Boss HP has to be zero or positive"
+            self.mem.write_record(self.data.addresses[boss_id + "HP"], hp)
+
+        return boss_hp
+
+    margit_hp: int = _boss_hp("Margit")
+    """Margit, The Fell Omen's HP"""
 
     @property
     def camera_pose(self) -> np.ndarray:

@@ -53,6 +53,13 @@ game_attributes = {"player_hp": {"type": int, ">": 0},
                    "img": {"type": np.ndarray, "shape": (90, 160, 3)}
                    }
 
+for boss in ("margit", ):
+    game_attributes |= {
+        f"{boss}_hp": {
+            "type": int,
+            ">": 0
+        }
+    }
 
 @pytest.mark.skipif(game_not_open(), reason="Elden Ring is not running.")
 @pytest.mark.parametrize("attr_name, attr_info", game_attributes.items())
